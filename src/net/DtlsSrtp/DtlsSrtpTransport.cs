@@ -237,7 +237,7 @@ namespace SIPSorcery.Net
                 this._waitMillis = RetransmissionMilliseconds;
                 this._startTime = System.DateTime.Now;
                 this._handshaking = true;
-                DtlsServerProtocol serverProtocol = new DtlsServerProtocol();
+                DtlsServerProtocol serverProtocol = new PatchedDtlsServerProtocol();
                 try
                 {
                     var server = (DtlsSrtpServer)connection;
