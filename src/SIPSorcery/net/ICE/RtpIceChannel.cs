@@ -966,9 +966,29 @@ namespace SIPSorcery.Net
             {
                 try
                 {
-                    if (_activeIceServer == null || _activeIceServer.Error != SocketError.Success)
+                    if (_activeIceServer is null || _activeIceServer.Error != SocketError.Success)
                     {
-                        if (_iceServerResolver.IceServers.Count(x => x.Value.Error == SocketError.Success) == 0)
+                        // Select the next server to check.
+                        var selectedIceServer = default(IceServer);
+                        foreach (var (uri, iceServer) in _iceServerResolver.IceServers.ToArray())
+                        {
+                            if (iceServer.Error != SocketError.Success)
+                            {
+                                continue;
+                            }
+
+                            if (selectedIceServer is null
+                                || iceServer.Uri.Scheme > selectedIceServer.Uri.Scheme)
+                            {
+                                selectedIceServer = iceServer;
+                            }
+                        }
+
+                        if (selectedIceServer is not null)
+                        {
+                            _activeIceServer = selectedIceServer;
+                        }
+                        else
                         {
                             logger.LogDebug("RTP ICE Channel all ICE server connection checks failed, stopping ICE servers timer.");
                             _processIceServersTimer.Dispose();
@@ -978,24 +998,6 @@ namespace SIPSorcery.Net
                             {
                                 IceGatheringState = RTCIceGatheringState.complete;
                                 OnIceGatheringStateChange?.Invoke(IceGatheringState);
-                            }
-                        }
-                        else
-                        {
-                            // Select the next server to check.
-                            var entry = _iceServerResolver.IceServers
-                                .Where(x => x.Value.Error == SocketError.Success)
-                                .OrderByDescending(x => x.Value._uri.Scheme) // TURN serves take priority.
-                                .FirstOrDefault();
-
-                            if (!entry.Equals(default(KeyValuePair<STUNUri, IceServer>)))
-                            {
-                                _activeIceServer = entry.Value;
-                            }
-                            else
-                            {
-                                logger.LogDebug("RTP ICE Channel was not able to set an active ICE server, stopping ICE servers timer.");
-                                _processIceServersTimer.Dispose();
                             }
                         }
                     }
@@ -2011,7 +2013,7 @@ namespace SIPSorcery.Net
                                 logger.LogDebug("ICE RTP channel remote peer nominated entry from binding request: {RemoteCandidate}.", matchingChecklistEntry.RemoteCandidate.ToShortString());
                                 SetNominatedEntry(matchingChecklistEntry);
                             }
-                            else if (matchingChecklistEntry.RemoteCandidate.ToString() != NominatedEntry.RemoteCandidate.ToString())
+                            else if (!matchingChecklistEntry.RemoteCandidate.IsEquivalent(NominatedEntry.RemoteCandidate))
                             {
                                 // The remote peer is changing the nominated candidate.
                                 logger.LogDebug("ICE RTP channel remote peer nominated a new candidate: {RemoteCandidate}.", matchingChecklistEntry.RemoteCandidate.ToShortString());
@@ -2365,6 +2367,28 @@ namespace SIPSorcery.Net
                     }
                     else
                     {
+                        m_rtpTcpReceiverByUri.TryGetValue(iceServer?._uri, out IceTcpReceiver rtpTcpReceiver);
+
+                        // Socket.Connected reports the state as of the last I/O operation and stays true
+                        // after the remote end closes the connection gracefully, so it cannot detect a half
+                        // closed connection on its own. The receiver can: a zero byte receive on a stream
+                        // socket is the end of stream.
+                        //
+                        // The connection cannot be recovered in place. A connected socket cannot be reused
+                        // once disconnected (Socket.Connect throws InvalidOperationException after
+                        // Socket.Disconnect regardless of the endpoint), and for a TURN server a new
+                        // connection is a new 5-tuple, so the allocation is gone with the old one and would
+                        // have to be re-established from scratch anyway. Reporting the failure is therefore
+                        // the correct outcome: the caller records it against the ICE server, which takes that
+                        // server out of the running and lets the checklist move to the next one. Without this
+                        // the send below is issued into a dead connection and the failure is only noticed
+                        // indirectly, once the retry and timeout heuristics happen to give up.
+                        if (rtpTcpReceiver != null && rtpTcpReceiver.IsEndOfStream)
+                        {
+                            logger.LogWarning("SendOverTCP the connection to ICE server {Uri} was closed by the remote party.", iceServer?._uri);
+                            return SocketError.NotConnected;
+                        }
+
                         if (!sendSocket.Connected || !(sendSocket.RemoteEndPoint is IPEndPoint) || !equals(sendSocket.RemoteEndPoint as IPEndPoint, dstEndPoint))
                         {
                             if (sendSocket.Connected)
@@ -2378,7 +2402,6 @@ namespace SIPSorcery.Net
                         }
 
                         //Fix ReceiveFrom logic if any previous exception happens
-                        m_rtpTcpReceiverByUri.TryGetValue(iceServer?._uri, out IceTcpReceiver rtpTcpReceiver);
                         if (rtpTcpReceiver != null && !rtpTcpReceiver.IsRunningReceive && !rtpTcpReceiver.IsClosed)
                         {
                             rtpTcpReceiver.BeginReceiveFrom();
