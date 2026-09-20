@@ -398,8 +398,13 @@ namespace SIPSorcery.Net
             if (PacketsSentCount > m_previousPacketsSentCount)
             {
                 // If we have sent a packet since the last report then we send an RTCP Sender Report.
-                // TODO: RTP timestamp should corresponds to the same time as the NTP timestamp
-                var senderReport = new RTCPSenderReport(Ssrc, ntcTime, LastRtpTimestampSent, PacketsSentCount, OctetsSentCount, (rr != null) ? new List<ReceptionReportSample> { rr } : null);
+                // The NTP and RTP timestamps are two readings of the same instant (RFC 3550 6.4.1),
+                // so this is the wall clock reading taken when that RTP timestamp went out and not
+                // the one taken now. Pairing it with now made every report out by the gap since the
+                // last packet, and that gap differs per stream - video goes out a frame at a time,
+                // audio every 20ms - so the streams of a session were placed on the wall clock with
+                // different errors and a receiver could not line them up against each other.
+                var senderReport = new RTCPSenderReport(Ssrc, LastNtpTimestampSent, LastRtpTimestampSent, PacketsSentCount, OctetsSentCount, (rr != null) ? new List<ReceptionReportSample> { rr } : null);
                 return new RTCPCompoundPacket(senderReport, sdesReport);
             }
             else
