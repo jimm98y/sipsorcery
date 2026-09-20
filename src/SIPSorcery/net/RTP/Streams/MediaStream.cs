@@ -706,6 +706,40 @@ namespace SIPSorcery.Net
         }
 
         /// <summary>
+        /// Allows additional control for sending raw RTP payloads. No framing or other processing is carried out.
+        /// </summary>
+        /// <remarks>
+        /// The segment overloads let a caller send out of a buffer it owns - one rented from an
+        /// ArrayPool, say - rather than an array sized exactly to the payload. A forwarder
+        /// re-sending someone else's RTP otherwise has to allocate a right sized array for every
+        /// packet, because the array overloads take the whole array as the payload.
+        /// </remarks>
+        /// <param name="data">The RTP packet payload.</param>
+        /// <param name="timestamp">The timestamp to set on the RTP header.</param>
+        /// <param name="markerBit">The value to set on the RTP header marker bit, should be 0 or 1.</param>
+        /// <param name="payloadType">The payload ID to set in the RTP header.</param>
+        /// <param name="seqNum"> The RTP sequence number </param>
+        public void SendRtpRaw(ArraySegment<byte> data, uint timestamp, int markerBit, int payloadType, ushort seqNum)
+        {
+            SendRtpRaw(data, timestamp, markerBit, payloadType, false, seqNum);
+        }
+
+        /// <summary>
+        /// Allows additional control for sending raw RTP payloads. No framing or other processing is carried out.
+        /// </summary>
+        /// <remarks>
+        /// See the overload taking a sequence number for why a segment is accepted.
+        /// </remarks>
+        /// <param name="data">The RTP packet payload.</param>
+        /// <param name="timestamp">The timestamp to set on the RTP header.</param>
+        /// <param name="markerBit">The value to set on the RTP header marker bit, should be 0 or 1.</param>
+        /// <param name="payloadType">The payload ID to set in the RTP header.</param>
+        public void SendRtpRaw(ArraySegment<byte> data, uint timestamp, int markerBit, int payloadType)
+        {
+            SendRtpRaw(data, timestamp, markerBit, payloadType, false);
+        }
+
+        /// <summary>
         /// Allows additional control for sending raw RTCP payloads
         /// </summary>
         /// <param name="rtcpBytes">Raw RTCP report data to send.</param>

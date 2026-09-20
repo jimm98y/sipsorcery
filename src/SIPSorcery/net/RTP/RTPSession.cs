@@ -3001,6 +3001,36 @@ namespace SIPSorcery.Net
         }
 
         /// <summary>
+        /// Allows additional control for sending raw RTP payloads (on the primary one). No framing or other processing is carried out.
+        /// </summary>
+        /// <remarks>
+        /// Takes a segment so a caller can send out of a buffer it owns - one rented from an
+        /// ArrayPool, say - rather than an array sized exactly to the payload. A forwarder
+        /// re-sending someone else's RTP otherwise has to allocate a right sized array for every
+        /// packet, because the array overloads take the whole array as the payload.
+        /// </remarks>
+        /// <param name="mediaType">The media type of the RTP packet being sent. Must be audio or video.</param>
+        /// <param name="payload">The RTP packet payload.</param>
+        /// <param name="timestamp">The timestamp to set on the RTP header.</param>
+        /// <param name="markerBit">The value to set on the RTP header marker bit, should be 0 or 1.</param>
+        /// <param name="payloadTypeID">The payload ID to set in the RTP header.</param>
+        public void SendRtpRaw(SDPMediaTypesEnum mediaType, ArraySegment<byte> payload, uint timestamp, int markerBit, int payloadTypeID)
+        {
+            if (mediaType == SDPMediaTypesEnum.audio)
+            {
+                AudioStream.SendRtpRaw(payload, timestamp, markerBit, payloadTypeID);
+            }
+            else if (mediaType == SDPMediaTypesEnum.video)
+            {
+                VideoStream?.SendRtpRaw(payload, timestamp, markerBit, payloadTypeID);
+            }
+            else if (mediaType == SDPMediaTypesEnum.text)
+            {
+                TextStream?.SendRtpRaw(payload, timestamp, markerBit, payloadTypeID);
+            }
+        }
+
+        /// <summary>
         /// Allows additional control for sending raw RTCP payloads (on the primary one).
         /// </summary>
         /// <param name="mediaType">The media type of the RTCP packet being sent. Must be audio or video.</param>
